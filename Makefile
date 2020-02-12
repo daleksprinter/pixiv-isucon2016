@@ -1,3 +1,5 @@
+GOPATH:=/home/isucon/private_isu/webapp/golang
+
 all: deps app.go
 	go build -o app
 

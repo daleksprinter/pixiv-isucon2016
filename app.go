@@ -25,6 +25,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/zenazn/goji"
 	"github.com/zenazn/goji/web"
+	_ "net/http/pprof"
 )
 
 var (
@@ -787,6 +788,10 @@ func postAdminBanned(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	host := os.Getenv("ISUCONP_DB_HOST")
 	if host == "" {
 		host = "localhost"
