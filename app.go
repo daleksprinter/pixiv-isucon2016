@@ -179,6 +179,20 @@ func getFlash(w http.ResponseWriter, r *http.Request, key string) string {
 	}
 }
 
+type CommentWithUser struct {
+	ID              int       `db:"id"`
+	PostID          int       `db:"post_id"`
+	UserID          int       `db:"user_id"`
+	Comment         string    `db:"comment"`
+	CreatedAt       time.Time `db:"created_at"`
+	UserPK          int       `db:"user_pk"`
+	UserAccountName string    `db:"account_name"`
+	UserPasshash    string    `db:"passhash"`
+	UserAuthority   int       `db:"authority"`
+	UserDelFlg      int       `db:"del_flg"`
+	UserCreatedAt   time.Time `db:"user_created_at"`
+}
+
 func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, error) {
 	var posts []Post
 
@@ -188,22 +202,54 @@ func makePosts(results []Post, CSRFToken string, allComments bool) ([]Post, erro
 			return nil, err
 		}
 
-		query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
+		var cmtusrs []CommentWithUser
+		query := "select c.*, u.id as user_pk, u.account_name, u.passhash, u.authority, u.del_flg, u.created_at as user_created_at from comments as c join users as u on c.user_id = u.id where post_id = ? order by created_at DESC"
 		if !allComments {
-			query += " LIMIT 3"
-		}
-		var comments []Comment
-		cerr := db.Select(&comments, query, p.ID)
-		if cerr != nil {
-			return nil, cerr
+			query += " limit 3"
 		}
 
-		for i := 0; i < len(comments); i++ {
-			uerr := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
-			if uerr != nil {
-				return nil, uerr
-			}
+		err = db.Select(&cmtusrs, query, p.ID)
+		if err != nil {
+			return nil, err
 		}
+
+		var comments []Comment
+		for _, c := range cmtusrs {
+			usr := User{
+				ID:          c.UserID,
+				AccountName: c.UserAccountName,
+				Passhash:    c.UserPasshash,
+				Authority:   c.UserAuthority,
+				DelFlg:      c.UserDelFlg,
+				CreatedAt:   c.UserCreatedAt,
+			}
+			cmt := Comment{
+				ID:        c.ID,
+				PostID:    p.ID,
+				UserID:    c.UserID,
+				Comment:   c.Comment,
+				CreatedAt: c.CreatedAt,
+				User:      usr,
+			}
+			comments = append(comments, cmt)
+		}
+
+		//query := "SELECT * FROM `comments` WHERE `post_id` = ? ORDER BY `created_at` DESC"
+		//if !allComments {
+		//	query += " LIMIT 3"
+		//}
+		//var comments []Comment
+		//cerr := db.Select(&comments, query, p.ID)
+		//if cerr != nil {
+		//	return nil, cerr
+		//}
+
+		//for i := 0; i < len(comments); i++ {
+		//	uerr := db.Get(&comments[i].User, "SELECT * FROM `users` WHERE `id` = ?", comments[i].UserID)
+		//	if uerr != nil {
+		//		return nil, uerr
+		//	}
+		//}
 
 		// reverse
 		for i, j := 0, len(comments)-1; i < j; i, j = i+1, j-1 {
