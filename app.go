@@ -39,6 +39,7 @@ const (
 	UploadLimit    = 10 * 1024 * 1024 // 10mb
 
 	// CSRF Token error
+
 	StatusUnprocessableEntity = 422
 )
 
@@ -608,7 +609,7 @@ func getPostsID(c web.C, w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := []Post{}
-	rerr := db.Select(&results, "SELECT * FROM `posts` WHERE `id` = ?", pid)
+	rerr := db.Select(&results, "SELECT id, user_id, mime, body, created_at FROM `posts` WHERE `id` = ?", pid)
 	if rerr != nil {
 		fmt.Println(rerr)
 		return
@@ -666,15 +667,19 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mime := ""
+	contentType := header.Header["Content-Type"][0]
+	ext := ""
 	if file != nil {
 		// 投稿のContent-Typeからファイルのタイプを決定する
-		contentType := header.Header["Content-Type"][0]
 		if strings.Contains(contentType, "jpeg") {
 			mime = "image/jpeg"
+			ext = "jpg"
 		} else if strings.Contains(contentType, "png") {
 			mime = "image/png"
+			ext = "png"
 		} else if strings.Contains(contentType, "gif") {
 			mime = "image/gif"
+			ext = "gif"
 		} else {
 			session := getSession(r)
 			session.Values["notice"] = "投稿できる画像形式はjpgとpngとgifだけです"
@@ -699,12 +704,11 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (?,?,?,?)"
+	query := "INSERT INTO `posts` (`user_id`, `mime`, `body`) VALUES (?,?,?)"
 	result, eerr := db.Exec(
 		query,
 		me.ID,
 		mime,
-		filedata,
 		r.FormValue("body"),
 	)
 	if eerr != nil {
@@ -718,39 +722,15 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	filename := strconv.FormatInt(pid, 10) + "." + ext
+	fierr := ioutil.WriteFile("/home/isucon/private_isu/webapp/image/"+filename, filedata, 0644)
+	if fierr != nil {
+
+		log.Fatal(fierr)
+	}
+
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 	return
-}
-
-func getImage(c web.C, w http.ResponseWriter, r *http.Request) {
-	pidStr := c.URLParams["id"]
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
-	post := Post{}
-	derr := db.Get(&post, "SELECT * FROM `posts` WHERE `id` = ?", pid)
-	if derr != nil {
-		fmt.Println(derr.Error())
-		return
-	}
-
-	ext := c.URLParams["ext"]
-
-	if ext == "jpg" && post.Mime == "image/jpeg" ||
-		ext == "png" && post.Mime == "image/png" ||
-		ext == "gif" && post.Mime == "image/gif" {
-		w.Header().Set("Content-Type", post.Mime)
-		_, err := w.Write(post.Imgdata)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		return
-	}
-
-	w.WriteHeader(http.StatusNotFound)
 }
 
 func postComment(w http.ResponseWriter, r *http.Request) {
@@ -886,7 +866,6 @@ func main() {
 	goji.Get("/posts", getPosts)
 	goji.Get("/posts/:id", getPostsID)
 	goji.Post("/", postIndex)
-	goji.Get("/image/:id.:ext", getImage)
 	goji.Post("/comment", postComment)
 	goji.Get("/admin/banned", getAdminBanned)
 	goji.Post("/admin/banned", postAdminBanned)
