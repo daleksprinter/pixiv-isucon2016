@@ -516,10 +516,9 @@ func getAccountName(c web.C, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	commentCount := 0
-	cerr := db.Get(&commentCount, "SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = ?", user.ID)
-	if cerr != nil {
-		fmt.Println(cerr)
+	commentCount, counterr := countComment(user.ID)
+	if counterr != nil {
+		fmt.Println(counterr)
 		return
 	}
 
@@ -741,7 +740,7 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filename := strconv.FormatInt(pid, 10) + "." + ext
-	fierr := ioutil.WriteFile("/home/isucon/private_isu/webapp/image/"+filename, filedata, 0644)
+	fierr := ioutil.WriteFile("/home/isucon/private_isu/webapp/public/image/"+filename, filedata, 0644)
 	if fierr != nil {
 
 		log.Fatal(fierr)
@@ -770,7 +769,20 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := "INSERT INTO `comments` (`post_id`, `user_id`, `comment`) VALUES (?,?,?)"
-	db.Exec(query, postID, me.ID, r.FormValue("comment"))
+
+	res, _ := db.Exec(query, postID, me.ID, r.FormValue("comment"))
+	lastId, _ := res.LastInsertId()
+
+	//get inserted comment form db
+	comment := Comment{}
+	getCommentQuery := "select * from comments where id = ?"
+	db.Get(&comment, getCommentQuery, lastId)
+
+	cmterr := addComment(&comment)
+	if cmterr != nil {
+		fmt.Println("could not get comment from db")
+		return
+	}
 
 	http.Redirect(w, r, fmt.Sprintf("/posts/%d", postID), http.StatusFound)
 }
@@ -859,7 +871,7 @@ func main() {
 	}
 
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local",
+		"%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=true&loc=Local&interpolateParams=true",
 		user,
 		password,
 		host,
@@ -887,6 +899,6 @@ func main() {
 	goji.Post("/comment", postComment)
 	goji.Get("/admin/banned", getAdminBanned)
 	goji.Post("/admin/banned", postAdminBanned)
-	goji.Get("/*", http.FileServer(http.Dir("../../../public")))
+	//goji.Get("/*", http.FileServer(http.Dir("../../../public")))
 	goji.Serve()
 }
