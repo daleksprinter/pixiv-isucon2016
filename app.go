@@ -456,19 +456,49 @@ func getLogout(w http.ResponseWriter, r *http.Request) {
 func getIndex(w http.ResponseWriter, r *http.Request) {
 	me := getSessionUser(r)
 
-	results := []Post{}
-
-	query := "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20"
-	err := db.Select(&results, query)
+	islatest, err := getIslatest()
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	posts, merr := makePosts(results, getCSRFToken(r), false)
-	if merr != nil {
-		fmt.Println(merr)
-		return
+	posts := []Post{}
+
+	if islatest {
+		posts, err = getIndexPosts()
+		if err != nil {
+			fmt.Println(err)
+		}
+
+	} else {
+
+		results := []Post{}
+
+		query := "SELECT posts.`id`, `user_id`, `body`, `mime`, posts.`created_at` FROM `posts` INNER JOIN `users` ON posts.user_id=users.id WHERE users.del_flg = 0 ORDER BY `created_at` DESC LIMIT 20"
+		err := db.Select(&results, query)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		posts, err = makePosts(results, getCSRFToken(r), false)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		err = setIndexPosts(posts)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		err = setIslatest(true)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
 	}
 
 	fmap := template.FuncMap{
@@ -746,6 +776,12 @@ func postIndex(w http.ResponseWriter, r *http.Request) {
 		log.Fatal(fierr)
 	}
 
+	err := setIslatest(false)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
 	http.Redirect(w, r, "/posts/"+strconv.FormatInt(pid, 10), http.StatusFound)
 	return
 }
@@ -781,6 +817,12 @@ func postComment(w http.ResponseWriter, r *http.Request) {
 	cmterr := addComment(&comment)
 	if cmterr != nil {
 		fmt.Println("could not get comment from db")
+		return
+	}
+
+	err := setIslatest(false)
+	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
