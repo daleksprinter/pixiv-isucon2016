@@ -21,6 +21,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	gsm "github.com/bradleypeabody/gorilla-sessions-memcache"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/gomodule/redigo/redis"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/zenazn/goji"
@@ -77,6 +78,16 @@ type Comment struct {
 func init() {
 	memcacheClient := memcache.New("localhost:11211")
 	store = gsm.NewMemcacheStore(memcacheClient, "isucogram_", []byte("sendagaya"))
+
+	pool = &redis.Pool{
+		MaxIdle:     10,
+		IdleTimeout: 10 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			return redis.DialURL("redis://localhost:6379")
+		},
+	}
+
+	initializeRedis()
 }
 
 func dbInitialize() {
@@ -90,6 +101,12 @@ func dbInitialize() {
 
 	for _, sql := range sqls {
 		db.Exec(sql)
+	}
+
+	comments := []Comment{}
+	_ = db.Select(&comments, "select * from comments")
+	for _, c := range comments {
+		addComment(&c)
 	}
 }
 
